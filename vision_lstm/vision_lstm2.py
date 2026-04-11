@@ -1,6 +1,13 @@
 # This file is licensed under Apache-2.0
+#
+# Original:
 # Copyright (c) NXAI GmbH and its affiliates 2024
 # Benedikt Alkin, Maximilian Beck, Korbinian Pöppel
+#
+# Modified:
+# Copyright (c) Arif Enes Aydın 2026
+# Modified by Arif Enes Aydın to experiment with different patch traversal strategies.
+
 import math
 import warnings
 from enum import Enum
