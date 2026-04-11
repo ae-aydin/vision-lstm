@@ -40,21 +40,21 @@ def small_init_(param: torch.Tensor, dim: int) -> torch.Tensor:
 
 
 def wang_init_(param: torch.Tensor, dim: int, num_blocks: int):
-    """ Adopted from https://github.com/EleutherAI/gpt-neox/blob/main/megatron/model/init_functions.py. """
+    """Adopted from https://github.com/EleutherAI/gpt-neox/blob/main/megatron/model/init_functions.py."""
     std = 2 / num_blocks / math.sqrt(dim)
     torch.nn.init.normal_(param, mean=0.0, std=std)
     return param
 
 
 def parallel_stabilized_simple(
-        queries: torch.Tensor,
-        keys: torch.Tensor,
-        values: torch.Tensor,
-        igate_preact: torch.Tensor,
-        fgate_preact: torch.Tensor,
-        lower_triangular_matrix: torch.Tensor = None,
-        stabilize_rowwise: bool = True,
-        eps: float = 1e-6,
+    queries: torch.Tensor,
+    keys: torch.Tensor,
+    values: torch.Tensor,
+    igate_preact: torch.Tensor,
+    fgate_preact: torch.Tensor,
+    lower_triangular_matrix: torch.Tensor = None,
+    stabilize_rowwise: bool = True,
+    eps: float = 1e-6,
 ) -> torch.Tensor:
     """
     This is the mLSTM cell in parallel form.
@@ -169,11 +169,7 @@ class LinearHeadwiseExpand(nn.Module):
         return x
 
     def extra_repr(self):
-        return (
-            f"dim={self.dim}, "
-            f"num_heads={self.num_heads}, "
-            f"bias={self.bias is not None}, "
-        )
+        return f"dim={self.dim}, num_heads={self.num_heads}, bias={self.bias is not None}, "
 
 
 class CausalConv1d(nn.Module):
@@ -216,22 +212,22 @@ class CausalConv1d(nn.Module):
         x = einops.rearrange(x, "b l d -> b d l")
         # causal conv1d
         x = self.conv(x)
-        x = x[:, :, :-self.pad]
+        x = x[:, :, : -self.pad]
         # back to dim last
         x = einops.rearrange(x, "b d l -> b l d")
         return x
 
 
 class LayerNorm(nn.Module):
-    """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False. """
+    """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False."""
 
     def __init__(
-            self,
-            ndim: int = -1,
-            weight: bool = True,
-            bias: bool = False,
-            eps: float = 1e-5,
-            residual_weight: bool = True,
+        self,
+        ndim: int = -1,
+        weight: bool = True,
+        bias: bool = False,
+        eps: float = 1e-5,
+        residual_weight: bool = True,
     ):
         super().__init__()
         self.weight = nn.Parameter(torch.zeros(ndim)) if weight else None
@@ -351,19 +347,19 @@ class MatrixLSTMCell(nn.Module):
 
 class ViLLayer(nn.Module):
     def __init__(
-            self,
-            dim,
-            direction,
-            expansion=2,
-            qkv_block_size=4,
-            proj_bias=True,
-            norm_bias=True,
-            conv_bias=True,
-            conv_kernel_size=4,
-            conv_kind="2d",
-            init_weights="original",
-            seqlens=None,
-            num_blocks=None,
+        self,
+        dim,
+        direction,
+        expansion=2,
+        qkv_block_size=4,
+        proj_bias=True,
+        norm_bias=True,
+        conv_bias=True,
+        conv_kernel_size=4,
+        conv_kind="2d",
+        init_weights="original",
+        seqlens=None,
+        num_blocks=None,
     ):
         super().__init__()
         assert dim % qkv_block_size == 0
@@ -408,8 +404,9 @@ class ViLLayer(nn.Module):
                 bias=conv_bias,
             )
         elif conv_kind == "2d":
-            assert conv_kernel_size % 2 == 1, \
+            assert conv_kernel_size % 2 == 1, (
                 f"same output shape as input shape is required -> even kernel sizes not supported"
+            )
             self.conv = SequenceConv2d(
                 in_channels=inner_dim,
                 out_channels=inner_dim,
@@ -507,17 +504,17 @@ class ViLLayer(nn.Module):
 
 class ViLBlock(nn.Module):
     def __init__(
-            self,
-            dim,
-            direction,
-            drop_path=0.0,
-            conv_kind="2d",
-            conv_kernel_size=3,
-            proj_bias=True,
-            norm_bias=True,
-            seqlens=None,
-            num_blocks=None,
-            init_weights="original",
+        self,
+        dim,
+        direction,
+        drop_path=0.0,
+        conv_kind="2d",
+        conv_kernel_size=3,
+        proj_bias=True,
+        norm_bias=True,
+        seqlens=None,
+        num_blocks=None,
+        init_weights="original",
     ):
         super().__init__()
         self.dim = dim
@@ -559,16 +556,16 @@ class ViLBlock(nn.Module):
 
 class ViLBlockPair(nn.Module):
     def __init__(
-            self,
-            dim,
-            drop_path=0.0,
-            conv_kind="2d",
-            conv_kernel_size=3,
-            proj_bias=True,
-            norm_bias=True,
-            seqlens=None,
-            num_blocks=None,
-            init_weights="original",
+        self,
+        dim,
+        drop_path=0.0,
+        conv_kind="2d",
+        conv_kernel_size=3,
+        proj_bias=True,
+        norm_bias=True,
+        seqlens=None,
+        num_blocks=None,
+        init_weights="original",
     ):
         super().__init__()
         self.rowwise_from_top_left = ViLBlock(
@@ -604,23 +601,23 @@ class ViLBlockPair(nn.Module):
 
 class VisionLSTM2(nn.Module):
     def __init__(
-            self,
-            dim=192,
-            input_shape=(3, 224, 224),
-            patch_size=16,
-            depth=12,
-            output_shape=(1000,),
-            mode="classifier",
-            pooling="bilateral_flatten",
-            drop_path_rate=0.0,
-            drop_path_decay=False,
-            stride=None,
-            legacy_norm=False,
-            conv_kind="2d",
-            conv_kernel_size=3,
-            proj_bias=True,
-            norm_bias=True,
-            init_weights="original",
+        self,
+        dim=192,
+        input_shape=(3, 224, 224),
+        patch_size=16,
+        depth=12,
+        output_shape=(1000,),
+        mode="classifier",
+        pooling="bilateral_flatten",
+        drop_path_rate=0.0,
+        drop_path_decay=False,
+        stride=None,
+        legacy_norm=False,
+        conv_kind="2d",
+        conv_kernel_size=3,
+        proj_bias=True,
+        norm_bias=True,
+        init_weights="original",
     ):
         if depth == 24 and dim < 1024:
             warnings.warn(
@@ -659,7 +656,7 @@ class VisionLSTM2(nn.Module):
         self.pos_embed = VitPosEmbed2d(seqlens=self.patch_embed.seqlens, dim=dim)
 
         # calculate stochastic depth per block
-        if drop_path_decay and drop_path_rate > 0.:
+        if drop_path_decay and drop_path_rate > 0.0:
             dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
         else:
             dpr = [drop_path_rate] * depth
@@ -706,8 +703,9 @@ class VisionLSTM2(nn.Module):
                 self.pooling = None
         elif mode == "classifier":
             # linear classification head
-            assert self.output_shape is not None and len(self.output_shape) == 1, \
+            assert self.output_shape is not None and len(self.output_shape) == 1, (
                 f"define number of classes via output_shape=(num_classes,) (e.g. output_shape=(1000,) for ImageNet-1K"
+            )
             self.head = nn.Linear(head_dim, self.output_shape[0])
             # following MAE https://github.com/facebookresearch/mae/blob/main/main_finetune.py#L257
             nn.init.trunc_normal_(self.head.weight, std=2e-5)
