@@ -149,4 +149,8 @@ dmypy.json
 *.md
 !README.md
 tests/
+temp/
+docs/
+data/
+experiments/
 .ruff_cache/
