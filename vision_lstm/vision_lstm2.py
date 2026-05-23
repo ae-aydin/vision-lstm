@@ -10,7 +10,6 @@
 
 import math
 import warnings
-from enum import Enum
 
 import einops
 import torch
@@ -18,11 +17,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from .vision_lstm_util import interpolate_sincos, to_ntuple, VitPatchEmbed, VitPosEmbed2d, DropPath, SequenceConv2d
-
-
-class SequenceTraversal(Enum):
-    ROWWISE_FROM_TOP_LEFT = "rowwise_from_top_left"
-    ROWWISE_FROM_BOT_RIGHT = "rowwise_from_bot_right"
+from .vision_lstm_traversal import SequenceTraversal, _get_zigzag_perm, _get_spiral_outward_perm, _TRAVERSAL_PAIRS
 
 
 def bias_linspace_init_(param: torch.Tensor, start: float = 3.4, end: float = 6.0) -> torch.Tensor:
@@ -380,6 +375,7 @@ class ViLLayer(nn.Module):
         self.conv_kind = conv_kind
         self.init_weights = init_weights
         self.num_blocks = num_blocks
+        self._perm_cache = {}
 
         inner_dim = expansion * dim
         num_heads = inner_dim // qkv_block_size
@@ -442,13 +438,40 @@ class ViLLayer(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, S, _ = x.shape
 
-        # alternate direction in successive layers
+        # compute and cache permutation for non-row-wise traversals
+        perm = inv_perm = None
+        if self.direction not in (
+            SequenceTraversal.ROWWISE_FROM_TOP_LEFT,
+            SequenceTraversal.ROWWISE_FROM_BOT_RIGHT,
+        ):
+            cache_key = (S, str(x.device))
+            if cache_key not in self._perm_cache:
+                H = W = int(S ** 0.5)
+                if self.direction in (
+                    SequenceTraversal.ZIGZAG_FROM_TOP_LEFT,
+                    SequenceTraversal.ZIGZAG_FROM_BOT_RIGHT,
+                ):
+                    base_perm = _get_zigzag_perm(H, W)
+                else:
+                    base_perm = _get_spiral_outward_perm(H, W)
+                if self.direction in (
+                    SequenceTraversal.ZIGZAG_FROM_BOT_RIGHT,
+                    SequenceTraversal.SPIRAL_COUNTER_CLOCKWISE,
+                ):
+                    base_perm = base_perm.flip(0)
+                self._perm_cache[cache_key] = (
+                    base_perm.to(x.device),
+                    torch.argsort(base_perm).to(x.device),
+                )
+            perm, inv_perm = self._perm_cache[cache_key]
+
+        # reorder sequence for this direction before mLSTM
         if self.direction == SequenceTraversal.ROWWISE_FROM_TOP_LEFT:
             pass
         elif self.direction == SequenceTraversal.ROWWISE_FROM_BOT_RIGHT:
             x = x.flip(dims=[1])
         else:
-            raise NotImplementedError
+            x = x[:, perm]
 
         # up-projection
         x_inner = self.proj_up(x)
@@ -469,13 +492,13 @@ class ViLLayer(nn.Module):
         # down-projection
         x = self.proj_down(h_state)
 
-        # reverse alternating flip
+        # restore original sequence order after mLSTM
         if self.direction == SequenceTraversal.ROWWISE_FROM_TOP_LEFT:
             pass
         elif self.direction == SequenceTraversal.ROWWISE_FROM_BOT_RIGHT:
             x = x.flip(dims=[1])
         else:
-            raise NotImplementedError
+            x = x[:, inv_perm]
 
         return x
 
@@ -565,6 +588,7 @@ class ViLBlockPair(nn.Module):
     def __init__(
         self,
         dim,
+        traversal=SequenceTraversal.ROWWISE_FROM_TOP_LEFT,
         drop_path=0.0,
         conv_kind="2d",
         conv_kernel_size=3,
@@ -575,9 +599,10 @@ class ViLBlockPair(nn.Module):
         init_weights="original",
     ):
         super().__init__()
-        self.rowwise_from_top_left = ViLBlock(
+        dir_fwd, dir_rev = _TRAVERSAL_PAIRS[traversal]
+        self.block_fwd = ViLBlock(
             dim=dim,
-            direction=SequenceTraversal.ROWWISE_FROM_TOP_LEFT,
+            direction=dir_fwd,
             drop_path=drop_path,
             conv_kind=conv_kind,
             conv_kernel_size=conv_kernel_size,
@@ -587,9 +612,9 @@ class ViLBlockPair(nn.Module):
             num_blocks=num_blocks,
             init_weights=init_weights,
         )
-        self.rowwise_from_bot_right = ViLBlock(
+        self.block_rev = ViLBlock(
             dim=dim,
-            direction=SequenceTraversal.ROWWISE_FROM_BOT_RIGHT,
+            direction=dir_rev,
             drop_path=drop_path,
             conv_kind=conv_kind,
             conv_kernel_size=conv_kernel_size,
@@ -601,8 +626,8 @@ class ViLBlockPair(nn.Module):
         )
 
     def forward(self, x):
-        x = self.rowwise_from_top_left(x)
-        x = self.rowwise_from_bot_right(x)
+        x = self.block_fwd(x)
+        x = self.block_rev(x)
         return x
 
 
@@ -620,6 +645,7 @@ class VisionLSTM2(nn.Module):
         drop_path_decay=False,
         stride=None,
         legacy_norm=False,
+        traversal=SequenceTraversal.ROWWISE_FROM_TOP_LEFT,
         conv_kind="2d",
         conv_kernel_size=3,
         proj_bias=True,
@@ -644,6 +670,13 @@ class VisionLSTM2(nn.Module):
         self.pooling = pooling
         self.drop_path_rate = drop_path_rate
         self.drop_path_decay = drop_path_decay
+        self.traversal = traversal
+        if traversal != SequenceTraversal.ROWWISE_FROM_TOP_LEFT and conv_kind == "2d":
+            warnings.warn(
+                f"conv_kind='2d' assumes row-major patch order and is incompatible with traversal={traversal.value}. "
+                "Switching to conv_kind='causal1d' automatically."
+            )
+            conv_kind = "causal1d"
         self.conv_kind = conv_kind
         self.conv_kernel_size = conv_kernel_size
         self.proj_bias = proj_bias
@@ -674,6 +707,7 @@ class VisionLSTM2(nn.Module):
             [
                 ViLBlockPair(
                     dim=dim,
+                    traversal=traversal,
                     drop_path=dpr[i],
                     conv_kind=conv_kind,
                     seqlens=self.patch_embed.seqlens,
