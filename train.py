@@ -16,6 +16,7 @@ Results saved to experiments/<traversal>_<timestamp>/
 """
 
 import argparse
+import contextlib
 import csv
 import json
 import math
@@ -63,6 +64,10 @@ def parse_args():
                    help="Overfit a single batch to sanity-check the model.")
     p.add_argument("--find-batch-size", action="store_true",
                    help="Estimate the maximum safe batch size and exit.")
+    p.add_argument("--amp",     action=argparse.BooleanOptionalAction, default=True,
+                   help="bfloat16 mixed precision (default: on). Disable with --no-amp.")
+    p.add_argument("--compile", action="store_true",
+                   help="torch.compile the model. First epoch is slow (~5-10 min of tracing).")
     return p.parse_args()
 
 
@@ -129,7 +134,7 @@ def build_optimizer_scheduler(args, model, steps_per_epoch):
     return optimizer, scheduler
 
 
-def train_one_epoch(model, loader, criterion, optimizer, scheduler, device, epoch, total_epochs):
+def train_one_epoch(model, loader, criterion, optimizer, scheduler, device, epoch, total_epochs, amp_ctx):
     model.train()
     total_loss = correct = total = 0
 
@@ -137,8 +142,9 @@ def train_one_epoch(model, loader, criterion, optimizer, scheduler, device, epoc
     for x, y in pbar:
         x, y = x.to(device), y.to(device)
         optimizer.zero_grad()
-        logits = model(x)
-        loss = criterion(logits, y)
+        with amp_ctx:
+            logits = model(x)
+            loss = criterion(logits, y)
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
@@ -154,15 +160,17 @@ def train_one_epoch(model, loader, criterion, optimizer, scheduler, device, epoc
 
 
 @torch.no_grad()
-def evaluate(model, loader, criterion, device, epoch, total_epochs):
+def evaluate(model, loader, criterion, device, epoch, total_epochs, amp_ctx):
     model.eval()
     total_loss = correct_top1 = correct_top5 = total = 0
 
     pbar = tqdm(loader, desc=f"Epoch {epoch:3d}/{total_epochs} [val]  ", leave=False)
     for x, y in pbar:
         x, y = x.to(device), y.to(device)
-        logits = model(x)
-        total_loss += criterion(logits, y).item() * y.size(0)
+        with amp_ctx:
+            logits = model(x)
+            loss = criterion(logits, y)
+        total_loss += loss.item() * y.size(0)
         top5 = logits.topk(5, dim=1).indices
         correct_top1 += (top5[:, 0] == y).sum().item()
         correct_top5 += (top5 == y.unsqueeze(1)).any(1).sum().item()
@@ -196,6 +204,12 @@ def main():
     torch.manual_seed(args.seed)
     device = torch.device(args.device)
 
+    amp_ctx = (
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+        if args.amp and device.type == "cuda"
+        else contextlib.nullcontext()
+    )
+
     if args.find_batch_size:
         if not torch.cuda.is_available():
             print("--find-batch-size requires a CUDA device.")
@@ -208,7 +222,9 @@ def main():
             torch.cuda.reset_peak_memory_stats(device)
             x = torch.randn(batch_size, 3, 64, 64, device=device)
             y = torch.zeros(batch_size, dtype=torch.long, device=device)
-            criterion_tmp(model(x), y).backward()
+            with amp_ctx:
+                loss = criterion_tmp(model(x), y)
+            loss.backward()
             return torch.cuda.max_memory_allocated(device) / 1024 ** 2
 
         mem1 = measure_peak_mb(1)
@@ -220,7 +236,8 @@ def main():
         max_batch = 2 ** int(math.log2(max_batch))
         base_lr = args.lr
         scaled_lr = base_lr * max_batch / args.batch_size
-        print(f"Fixed overhead    : {fixed_mb:.0f} MB  (model + grads; excludes AdamW state ~47MB covered by 0.8 margin)")
+        amp_label = "bf16" if args.amp else "fp32"
+        print(f"Fixed overhead    : {fixed_mb:.0f} MB  (model + grads; excludes AdamW state ~47MB covered by 0.8 margin; amp={amp_label})")
         print(f"Per sample        : {per_sample_mb:.1f} MB")
         print(f"Free GPU memory   : {free_mb:.0f} MB")
         print(f"Suggested batch   : {max_batch}")
@@ -237,7 +254,8 @@ def main():
         print("Overfitting single batch (32 samples) — loss should reach ~0.85 (label smoothing floor) within 200 steps.")
         for step in range(1, 201):
             optimizer.zero_grad()
-            loss = criterion(model(x), y)
+            with amp_ctx:
+                loss = criterion(model(x), y)
             loss.backward()
             optimizer.step()
             if step % 20 == 0:
@@ -253,9 +271,13 @@ def main():
 
     train_loader, val_loader = get_dataloaders(args)
     model = build_model(args).to(device)
+    if args.compile:
+        print("Compiling model with torch.compile — first epoch will be slow (~5-10 min for tracing).")
+        model = torch.compile(model)
     n_params = sum(p.numel() for p in model.parameters())
+    amp_label = "bf16" if (args.amp and device.type == "cuda") else "off"
     print(f"Parameters : {n_params / 1e6:.2f}M")
-    print(f"Traversal  : {args.traversal}  |  conv: causal1d  |  device: {device}")
+    print(f"Traversal  : {args.traversal}  |  conv: causal1d  |  device: {device}  |  amp: {amp_label}  |  compile: {args.compile}")
     print(f"Epochs     : {args.epochs}  |  batch: {args.batch_size}  |  lr: {args.lr}")
     print()
 
@@ -274,10 +296,10 @@ def main():
         t0 = time.time()
 
         train_loss, train_acc = train_one_epoch(
-            model, train_loader, criterion, optimizer, scheduler, device, epoch, args.epochs,
+            model, train_loader, criterion, optimizer, scheduler, device, epoch, args.epochs, amp_ctx,
         )
         val_loss, val_top1, val_top5 = evaluate(
-            model, val_loader, criterion, device, epoch, args.epochs,
+            model, val_loader, criterion, device, epoch, args.epochs, amp_ctx,
         )
 
         lr = optimizer.param_groups[0]["lr"]
