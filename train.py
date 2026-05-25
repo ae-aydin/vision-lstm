@@ -60,10 +60,6 @@ def parse_args():
     p.add_argument("--workers",        type=int,   default=4)
     p.add_argument("--device",         default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--seed",           type=int,   default=42)
-    p.add_argument("--overfit-batch",   action="store_true",
-                   help="Overfit a single batch to sanity-check the model.")
-    p.add_argument("--find-batch-size", action="store_true",
-                   help="Estimate the maximum safe batch size and exit.")
     p.add_argument("--amp",     action=argparse.BooleanOptionalAction, default=True,
                    help="bfloat16 mixed precision (default: on). Disable with --no-amp.")
     p.add_argument("--compile", action="store_true",
@@ -209,59 +205,6 @@ def main():
         if args.amp and device.type == "cuda"
         else contextlib.nullcontext()
     )
-
-    if args.find_batch_size:
-        if not torch.cuda.is_available():
-            print("--find-batch-size requires a CUDA device.")
-            return
-        model = build_model(args).to(device)
-        criterion_tmp = nn.CrossEntropyLoss(label_smoothing=0.1)
-
-        def measure_peak_mb(batch_size):
-            model.zero_grad()
-            torch.cuda.reset_peak_memory_stats(device)
-            x = torch.randn(batch_size, 3, 64, 64, device=device)
-            y = torch.zeros(batch_size, dtype=torch.long, device=device)
-            with amp_ctx:
-                loss = criterion_tmp(model(x), y)
-            loss.backward()
-            return torch.cuda.max_memory_allocated(device) / 1024 ** 2
-
-        mem1 = measure_peak_mb(1)
-        mem2 = measure_peak_mb(2)
-        per_sample_mb = mem2 - mem1
-        fixed_mb      = mem1 - per_sample_mb
-        free_mb = torch.cuda.mem_get_info(device)[0] / 1024 ** 2
-        max_batch = int((free_mb * 0.8 - fixed_mb) / per_sample_mb)
-        max_batch = 2 ** int(math.log2(max_batch))
-        base_lr = args.lr
-        scaled_lr = base_lr * max_batch / args.batch_size
-        amp_label = "bf16" if args.amp else "fp32"
-        print(f"Fixed overhead    : {fixed_mb:.0f} MB  (model + grads; excludes AdamW state ~47MB covered by 0.8 margin; amp={amp_label})")
-        print(f"Per sample        : {per_sample_mb:.1f} MB")
-        print(f"Free GPU memory   : {free_mb:.0f} MB")
-        print(f"Suggested batch   : {max_batch}")
-        print(f"Scaled LR         : {scaled_lr:.2e}  (linear scaling from {base_lr:.2e} at batch {args.batch_size})")
-        return
-
-    if args.overfit_batch:
-        model = build_model(args).to(device)
-        train_loader, _ = get_dataloaders(args)
-        criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-        x, y = next(iter(train_loader))
-        x, y = x[:32].to(device), y[:32].to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
-        print("Overfitting single batch (32 samples) — loss should reach ~0.85 (label smoothing floor) within 200 steps.")
-        for step in range(1, 201):
-            optimizer.zero_grad()
-            with amp_ctx:
-                loss = criterion(model(x), y)
-            loss.backward()
-            optimizer.step()
-            if step % 20 == 0:
-                acc = (model(x).argmax(1) == y).float().mean().item()
-                print(f"  step {step:3d}  loss {loss.item():.4f}  acc {acc:.3f}")
-        return
 
     exp_dir = setup_experiment(args)
     print(f"Experiment : {exp_dir}")
