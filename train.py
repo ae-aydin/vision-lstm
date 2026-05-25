@@ -38,7 +38,7 @@ from vision_lstm.vision_lstm_traversal import SequenceTraversal
 TRAVERSAL_MAP = {
     "rowwise": SequenceTraversal.ROWWISE_FROM_TOP_LEFT,
     "zigzag":  SequenceTraversal.ZIGZAG_FROM_TOP_LEFT,
-    "spiral":  SequenceTraversal.SPIRAL_CLOCKWISE,
+    "spiral":  SequenceTraversal.SPIRAL_OUTWARD,
 }
 
 # Tiny ImageNet channel statistics

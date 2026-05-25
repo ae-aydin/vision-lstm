@@ -8,8 +8,8 @@ class SequenceTraversal(Enum):
     ROWWISE_FROM_BOT_RIGHT = "rowwise_from_bot_right"
     ZIGZAG_FROM_TOP_LEFT = "zigzag_from_top_left"
     ZIGZAG_FROM_BOT_RIGHT = "zigzag_from_bot_right"
-    SPIRAL_CLOCKWISE = "spiral_clockwise"
-    SPIRAL_COUNTER_CLOCKWISE = "spiral_counter_clockwise"
+    SPIRAL_OUTWARD = "spiral_outward"
+    SPIRAL_INWARD = "spiral_inward"
 
 
 def _get_zigzag_perm(H: int, W: int) -> torch.Tensor:
@@ -65,8 +65,8 @@ _TRAVERSAL_PAIRS = {
         SequenceTraversal.ZIGZAG_FROM_TOP_LEFT,
         SequenceTraversal.ZIGZAG_FROM_BOT_RIGHT,
     ),
-    SequenceTraversal.SPIRAL_CLOCKWISE: (
-        SequenceTraversal.SPIRAL_CLOCKWISE,
-        SequenceTraversal.SPIRAL_COUNTER_CLOCKWISE,
+    SequenceTraversal.SPIRAL_OUTWARD: (
+        SequenceTraversal.SPIRAL_OUTWARD,
+        SequenceTraversal.SPIRAL_INWARD,
     ),
 }

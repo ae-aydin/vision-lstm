@@ -456,7 +456,7 @@ class ViLLayer(nn.Module):
                     base_perm = _get_spiral_outward_perm(H, W)
                 if self.direction in (
                     SequenceTraversal.ZIGZAG_FROM_BOT_RIGHT,
-                    SequenceTraversal.SPIRAL_COUNTER_CLOCKWISE,
+                    SequenceTraversal.SPIRAL_INWARD,
                 ):
                     base_perm = base_perm.flip(0)
                 self._perm_cache[cache_key] = (
