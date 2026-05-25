@@ -16,20 +16,31 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .vision_lstm_util import interpolate_sincos, to_ntuple, VitPatchEmbed, VitPosEmbed2d, DropPath, SequenceConv2d
 from .vision_lstm_traversal import (
+    _TRAVERSAL_PAIRS,
     SequenceTraversal,
-    _get_zigzag_perm,
-    _get_spiral_outward_perm,
     _get_hilbert_perm,
     _get_random_perm,
-    _TRAVERSAL_PAIRS,
+    _get_spiral_outward_perm,
+    _get_zigzag_perm,
+)
+from .vision_lstm_util import (
+    DropPath,
+    SequenceConv2d,
+    VitPatchEmbed,
+    VitPosEmbed2d,
+    interpolate_sincos,
+    to_ntuple,
 )
 
 
-def bias_linspace_init_(param: torch.Tensor, start: float = 3.4, end: float = 6.0) -> torch.Tensor:
+def bias_linspace_init_(
+    param: torch.Tensor, start: float = 3.4, end: float = 6.0
+) -> torch.Tensor:
     """Linearly spaced bias init across dimensions."""
-    assert param.dim() == 1, f"param must be 1-dimensional (typically a bias), got {param.dim()}"
+    assert param.dim() == 1, (
+        f"param must be 1-dimensional (typically a bias), got {param.dim()}"
+    )
     n_dims = param.shape[0]
     init_vals = torch.linspace(start, end, n_dims)
     with torch.no_grad():
@@ -94,7 +105,9 @@ def parallel_stabilized_simple(
         ltr = torch.tril(torch.ones((S, S), dtype=torch.bool, device=_device))
     else:
         ltr = lower_triangular_matrix
-    assert ltr.dtype == torch.bool, f"lower_triangular_matrix must be of dtype bool, got {ltr.dtype}"
+    assert ltr.dtype == torch.bool, (
+        f"lower_triangular_matrix must be of dtype bool, got {ltr.dtype}"
+    )
 
     log_fgates_cumsum = torch.cat(
         [
@@ -106,13 +119,19 @@ def parallel_stabilized_simple(
     # for each batch/head this is a matrix of shape (S+1, S+1) containing the cumsum of the log forget gate values
     # in the second dimension (colum dimension). Each row has the same is a copy of the first row.
     # First entry of each row is zero.
-    rep_log_fgates_cumsum = log_fgates_cumsum.repeat(1, 1, 1, S + 1)  # (B, NH, S+1, S+1)
+    rep_log_fgates_cumsum = log_fgates_cumsum.repeat(
+        1, 1, 1, S + 1
+    )  # (B, NH, S+1, S+1)
     # Now in each row cut off / subtract the forgetgate values of the later timesteps
     # where col j > row i
-    _log_fg_matrix = rep_log_fgates_cumsum - rep_log_fgates_cumsum.transpose(-2, -1)  # (B, NH, S+1, S+1)
+    _log_fg_matrix = rep_log_fgates_cumsum - rep_log_fgates_cumsum.transpose(
+        -2, -1
+    )  # (B, NH, S+1, S+1)
     # Causal masking & selection of the correct submatrix, such that forgetgate at timestep t is not applied
     # to the input at timestep t
-    log_fg_matrix = torch.where(ltr, _log_fg_matrix[:, :, 1:, 1:], -float("inf"))  # (B, NH, S, S)
+    log_fg_matrix = torch.where(
+        ltr, _log_fg_matrix[:, :, 1:, 1:], -float("inf")
+    )  # (B, NH, S, S)
 
     # gate decay matrix D (combination of forget gate and input gate)
     log_D_matrix = log_fg_matrix + igate_preact.transpose(-2, -1)  # (B, NH, S, S)
@@ -120,7 +139,9 @@ def parallel_stabilized_simple(
     if stabilize_rowwise:
         max_log_D, _ = torch.max(log_D_matrix, dim=-1, keepdim=True)  # (B, NH, S, 1)
     else:
-        max_log_D = torch.max(log_D_matrix.view(B, NH, -1), dim=-1, keepdim=True)[0].unsqueeze(-1)
+        max_log_D = torch.max(log_D_matrix.view(B, NH, -1), dim=-1, keepdim=True)[
+            0
+        ].unsqueeze(-1)
         # (B, NH, 1, 1)
     log_D_matrix_stabilized = log_D_matrix - max_log_D  # (B, NH, S, S)
     D_matrix = torch.exp(log_D_matrix_stabilized)  # (B, NH, S, S)
@@ -130,7 +151,9 @@ def parallel_stabilized_simple(
     # combination matrix C
     qk_matrix = queries @ keys_scaled.transpose(-2, -1)  # (B, NH, S, S)
     C_matrix = qk_matrix * D_matrix  # (B, NH, S, S)
-    normalizer = torch.maximum(C_matrix.sum(dim=-1, keepdim=True).abs(), torch.exp(-max_log_D))  # (B, NH, S, 1)
+    normalizer = torch.maximum(
+        C_matrix.sum(dim=-1, keepdim=True).abs(), torch.exp(-max_log_D)
+    )  # (B, NH, S, 1)
     # (B, NH, S, S)
     C_matrix_normalized = C_matrix / (normalizer + eps)
 
@@ -161,7 +184,9 @@ class LinearHeadwiseExpand(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.normal_(self.weight.data, mean=0.0, std=math.sqrt(2 / 5 / self.weight.shape[-1]))
+        nn.init.normal_(
+            self.weight.data, mean=0.0, std=math.sqrt(2 / 5 / self.weight.shape[-1])
+        )
         if self.bias is not None:
             nn.init.zeros_(self.bias.data)
 
@@ -305,7 +330,9 @@ class MatrixLSTMCell(nn.Module):
         self.causal_mask_cache = {}
         self.reset_parameters()
 
-    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor
+    ) -> torch.Tensor:
         B, S, _ = q.shape  # (B, S, H)
 
         if_gate_input = torch.cat([q, k, v], dim=-1)
@@ -328,7 +355,9 @@ class MatrixLSTMCell(nn.Module):
         if _mask_key in self.causal_mask_cache:
             causal_mask = self.causal_mask_cache[_mask_key]
         else:
-            causal_mask = torch.tril(torch.ones(S, S, dtype=torch.bool, device=q.device))
+            causal_mask = torch.tril(
+                torch.ones(S, S, dtype=torch.bool, device=q.device)
+            )
             self.causal_mask_cache[_mask_key] = causal_mask
 
         h_state = parallel_stabilized_simple(
@@ -341,7 +370,9 @@ class MatrixLSTMCell(nn.Module):
         )  # (B, NH, S, DH)
 
         h_state_norm = self.outnorm(h_state)  # (B, NH, S, DH)
-        h_state_norm = h_state_norm.transpose(1, 2).reshape(B, S, -1)  # (B, NH, S, DH) -> (B, S, NH, DH) -> (B, S, H)
+        h_state_norm = h_state_norm.transpose(1, 2).reshape(
+            B, S, -1
+        )  # (B, NH, S, DH) -> (B, S, NH, DH) -> (B, S, H)
 
         return h_state_norm
 
@@ -454,7 +485,7 @@ class ViLLayer(nn.Module):
         ):
             cache_key = (S, str(x.device))
             if cache_key not in self._perm_cache:
-                H = W = int(S ** 0.5)
+                H = W = int(S**0.5)
                 if self.direction in (
                     SequenceTraversal.ZIGZAG_FROM_TOP_LEFT,
                     SequenceTraversal.ZIGZAG_FROM_BOT_RIGHT,
@@ -753,14 +784,18 @@ class VisionLSTM2(nn.Module):
         # head
         if mode == "features":
             if self.output_shape is not None:
-                warnings.warn(f"passed mode=features -> output_shape is ignored ({self.output_shape})")
+                warnings.warn(
+                    f"passed mode=features -> output_shape is ignored ({self.output_shape})"
+                )
             self.head = None
             if self.pooling is None:
                 self.output_shape = (self.patch_embed.num_patches, dim)
             elif self.pooling == "to_image":
                 self.output_shape = (dim, *self.patch_embed.seqlens)
             else:
-                warnings.warn(f"passed invalid pooling -> pooling is ignored ({self.pooling})")
+                warnings.warn(
+                    f"passed invalid pooling -> pooling is ignored ({self.pooling})"
+                )
                 self.pooling = None
         elif mode == "classifier":
             # linear classification head
@@ -778,7 +813,9 @@ class VisionLSTM2(nn.Module):
         # interpolate pos_embed for different resolution (e.g. for fine-tuning on higher-resolution)
         old_pos_embed = state_dict["pos_embed.embed"]
         if old_pos_embed.shape != self.pos_embed.embed.shape:
-            state_dict["pos_embed.embed"] = interpolate_sincos(embed=old_pos_embed, seqlens=self.pos_embed.seqlens)
+            state_dict["pos_embed.embed"] = interpolate_sincos(
+                embed=old_pos_embed, seqlens=self.pos_embed.seqlens
+            )
         # remove head and adapt layernorm for feature extraction
         if self.mode == "features":
             state_dict.pop("head.weight", None)

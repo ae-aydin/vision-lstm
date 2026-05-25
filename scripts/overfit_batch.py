@@ -15,28 +15,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
 import torch.nn as nn
-from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
 
 from vision_lstm.vision_lstm2 import VisionLSTM2
 from vision_lstm.vision_lstm_traversal import SequenceTraversal
 
 TRAVERSAL_MAP = {
     "rowwise": SequenceTraversal.ROWWISE_FROM_TOP_LEFT,
-    "zigzag":  SequenceTraversal.ZIGZAG_FROM_TOP_LEFT,
-    "spiral":  SequenceTraversal.SPIRAL_OUTWARD,
+    "zigzag": SequenceTraversal.ZIGZAG_FROM_TOP_LEFT,
+    "spiral": SequenceTraversal.SPIRAL_OUTWARD,
 }
 
 MEAN = (0.4802, 0.4481, 0.3975)
-STD  = (0.2770, 0.2691, 0.2821)
+STD = (0.2770, 0.2691, 0.2821)
 
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--traversal",  choices=list(TRAVERSAL_MAP), default="rowwise")
-    p.add_argument("--data-dir",   default="data/tiny-imagenet-200")
-    p.add_argument("--amp",        action=argparse.BooleanOptionalAction, default=True)
-    p.add_argument("--device",     default="cuda" if torch.cuda.is_available() else "cpu")
+    p.add_argument("--traversal", choices=list(TRAVERSAL_MAP), default="rowwise")
+    p.add_argument("--data-dir", default="data/tiny-imagenet-200")
+    p.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return p.parse_args()
 
 
@@ -60,12 +60,14 @@ def main():
         conv_kind="causal1d",
     ).to(device)
 
-    train_tf = transforms.Compose([
-        transforms.RandomCrop(64, padding=8),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(MEAN, STD),
-    ])
+    train_tf = transforms.Compose(
+        [
+            transforms.RandomCrop(64, padding=8),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(MEAN, STD),
+        ]
+    )
     train_ds = datasets.ImageFolder(str(Path(args.data_dir) / "train"), train_tf)
     loader = DataLoader(train_ds, batch_size=32, shuffle=True, num_workers=4)
 
@@ -75,7 +77,9 @@ def main():
     x, y = next(iter(loader))
     x, y = x.to(device), y.to(device)
 
-    print("Overfitting single batch (32 samples) — loss should reach ~0.85 (label smoothing floor) within 200 steps.")
+    print(
+        "Overfitting single batch (32 samples) — loss should reach ~0.85 (label smoothing floor) within 200 steps."
+    )
     for step in range(1, 201):
         optimizer.zero_grad()
         with amp_ctx:

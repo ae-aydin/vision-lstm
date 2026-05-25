@@ -76,8 +76,9 @@ def _xy2d(n: int, x: int, y: int) -> int:
 
 def _get_hilbert_perm(H: int, W: int) -> torch.Tensor:
     """Hilbert space-filling curve traversal. Requires square power-of-2 grid."""
-    assert H == W and (H & (H - 1)) == 0, \
+    assert H == W and (H & (H - 1)) == 0, (
         f"Hilbert curve requires square power-of-2 grid, got {H}x{W}"
+    )
     hilbert_indices = [_xy2d(H, i % W, i // W) for i in range(H * W)]
     order = sorted(range(H * W), key=lambda i: hilbert_indices[i])
     return torch.tensor(order, dtype=torch.long)

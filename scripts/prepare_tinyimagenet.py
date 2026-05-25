@@ -31,7 +31,9 @@ def main():
         print("Removed unused test/ split.")
 
     if not images_dir.exists():
-        print(f"Val images already restructured or not found at {images_dir}. Nothing to do.")
+        print(
+            f"Val images already restructured or not found at {images_dir}. Nothing to do."
+        )
         return
 
     # parse annotations: filename -> class_id
@@ -49,7 +51,9 @@ def main():
         shutil.move(str(src), str(dst_dir / fname))
 
     images_dir.rmdir()
-    print(f"Done. Val split restructured into {len(set(mapping.values()))} class folders.")
+    print(
+        f"Done. Val split restructured into {len(set(mapping.values()))} class folders."
+    )
 
 
 if __name__ == "__main__":

@@ -9,19 +9,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
+
 from vision_lstm.vision_lstm2 import VisionLSTM2
 from vision_lstm.vision_lstm_traversal import (
     SequenceTraversal,
-    _get_zigzag_perm,
-    _get_spiral_outward_perm,
     _get_hilbert_perm,
     _get_random_perm,
+    _get_spiral_outward_perm,
+    _get_zigzag_perm,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. Permutation correctness
 # ---------------------------------------------------------------------------
+
 
 def check_perm(perm: torch.Tensor, H: int, W: int, name: str):
     S = H * W
@@ -29,19 +30,23 @@ def check_perm(perm: torch.Tensor, H: int, W: int, name: str):
     assert perm.min().item() == 0, f"{name}: min index is not 0"
     assert perm.max().item() == S - 1, f"{name}: max index is not {S - 1}"
     assert perm.unique().numel() == S, f"{name}: duplicate indices found"
-    print(f"  {name}({H}x{W}): perm OK  (first={perm[0].item()}, last={perm[-1].item()})")
+    print(
+        f"  {name}({H}x{W}): perm OK  (first={perm[0].item()}, last={perm[-1].item()})"
+    )
 
 
 print("--- Permutation checks ---")
 for H, W in [(8, 8), (4, 4), (7, 5)]:
-    check_perm(_get_zigzag_perm(H, W),        H, W, "zigzag")
+    check_perm(_get_zigzag_perm(H, W), H, W, "zigzag")
     check_perm(_get_spiral_outward_perm(H, W), H, W, "spiral")
-    check_perm(_get_random_perm(H, W),         H, W, "random")
+    check_perm(_get_random_perm(H, W), H, W, "random")
 
 for H, W in [(8, 8), (4, 4)]:
     check_perm(_get_hilbert_perm(H, W), H, W, "hilbert")
 
-assert _get_zigzag_perm(8, 8)[0].item() == 0, "zigzag should start at top-left (index 0)"
+assert _get_zigzag_perm(8, 8)[0].item() == 0, (
+    "zigzag should start at top-left (index 0)"
+)
 center_candidates = {27, 28, 35, 36}
 assert _get_spiral_outward_perm(8, 8)[0].item() in center_candidates, (
     f"spiral should start near center, got {_get_spiral_outward_perm(8, 8)[0].item()}"
@@ -52,7 +57,9 @@ assert _get_hilbert_perm(8, 8)[0].item() in corner_candidates, (
     f"hilbert should start at a corner, got {_get_hilbert_perm(8, 8)[0].item()}"
 )
 # random perm with same seed must be reproducible
-assert (_get_random_perm(8, 8) == _get_random_perm(8, 8)).all(), "random perm not reproducible"
+assert (_get_random_perm(8, 8) == _get_random_perm(8, 8)).all(), (
+    "random perm not reproducible"
+)
 print("  zigzag starts at top-left: OK")
 print("  spiral starts near center: OK")
 print("  hilbert starts at a corner: OK")
@@ -65,10 +72,10 @@ print("  random perm is reproducible: OK")
 
 print("\n--- Inverse permutation checks ---")
 for name, perm in [
-    ("zigzag",  _get_zigzag_perm(8, 8)),
-    ("spiral",  _get_spiral_outward_perm(8, 8)),
+    ("zigzag", _get_zigzag_perm(8, 8)),
+    ("spiral", _get_spiral_outward_perm(8, 8)),
     ("hilbert", _get_hilbert_perm(8, 8)),
-    ("random",  _get_random_perm(8, 8)),
+    ("random", _get_random_perm(8, 8)),
 ]:
     inv = torch.argsort(perm)
     x = torch.arange(64)
@@ -85,14 +92,21 @@ print("\n--- Forward pass (conv_kind='causal1d') ---")
 x = torch.randn(2, 3, 64, 64)
 
 for name, traversal in [
-    ("rowwise",  SequenceTraversal.ROWWISE_FROM_TOP_LEFT),
-    ("zigzag",   SequenceTraversal.ZIGZAG_FROM_TOP_LEFT),
-    ("spiral",   SequenceTraversal.SPIRAL_OUTWARD),
-    ("hilbert",  SequenceTraversal.HILBERT),
-    ("random",   SequenceTraversal.RANDOM_FIXED),
+    ("rowwise", SequenceTraversal.ROWWISE_FROM_TOP_LEFT),
+    ("zigzag", SequenceTraversal.ZIGZAG_FROM_TOP_LEFT),
+    ("spiral", SequenceTraversal.SPIRAL_OUTWARD),
+    ("hilbert", SequenceTraversal.HILBERT),
+    ("random", SequenceTraversal.RANDOM_FIXED),
 ]:
-    model = VisionLSTM2(dim=192, input_shape=(3, 64, 64), patch_size=8, depth=12,
-                        output_shape=(200,), conv_kind="causal1d", traversal=traversal)
+    model = VisionLSTM2(
+        dim=192,
+        input_shape=(3, 64, 64),
+        patch_size=8,
+        depth=12,
+        output_shape=(200,),
+        conv_kind="causal1d",
+        traversal=traversal,
+    )
     out = model(x)
     assert out.shape == (2, 200), f"{name}: expected (2, 200), got {tuple(out.shape)}"
     assert out.isfinite().all(), f"{name}: output contains NaN or Inf"
