@@ -36,9 +36,11 @@ from vision_lstm.vision_lstm2 import VisionLSTM2
 from vision_lstm.vision_lstm_traversal import SequenceTraversal
 
 TRAVERSAL_MAP = {
-    "rowwise": SequenceTraversal.ROWWISE_FROM_TOP_LEFT,
-    "zigzag":  SequenceTraversal.ZIGZAG_FROM_TOP_LEFT,
-    "spiral":  SequenceTraversal.SPIRAL_OUTWARD,
+    "rowwise":  SequenceTraversal.ROWWISE_FROM_TOP_LEFT,
+    "zigzag":   SequenceTraversal.ZIGZAG_FROM_TOP_LEFT,
+    "spiral":   SequenceTraversal.SPIRAL_OUTWARD,
+    "hilbert":  SequenceTraversal.HILBERT,
+    "random":   SequenceTraversal.RANDOM_FIXED,
 }
 
 # Tiny ImageNet channel statistics

@@ -17,7 +17,14 @@ import torch.nn.functional as F
 from torch import nn
 
 from .vision_lstm_util import interpolate_sincos, to_ntuple, VitPatchEmbed, VitPosEmbed2d, DropPath, SequenceConv2d
-from .vision_lstm_traversal import SequenceTraversal, _get_zigzag_perm, _get_spiral_outward_perm, _TRAVERSAL_PAIRS
+from .vision_lstm_traversal import (
+    SequenceTraversal,
+    _get_zigzag_perm,
+    _get_spiral_outward_perm,
+    _get_hilbert_perm,
+    _get_random_perm,
+    _TRAVERSAL_PAIRS,
+)
 
 
 def bias_linspace_init_(param: torch.Tensor, start: float = 3.4, end: float = 6.0) -> torch.Tensor:
@@ -453,11 +460,23 @@ class ViLLayer(nn.Module):
                     SequenceTraversal.ZIGZAG_FROM_BOT_RIGHT,
                 ):
                     base_perm = _get_zigzag_perm(H, W)
-                else:
+                elif self.direction in (
+                    SequenceTraversal.SPIRAL_OUTWARD,
+                    SequenceTraversal.SPIRAL_INWARD,
+                ):
                     base_perm = _get_spiral_outward_perm(H, W)
+                elif self.direction in (
+                    SequenceTraversal.HILBERT,
+                    SequenceTraversal.HILBERT_REVERSED,
+                ):
+                    base_perm = _get_hilbert_perm(H, W)
+                else:
+                    base_perm = _get_random_perm(H, W)
                 if self.direction in (
                     SequenceTraversal.ZIGZAG_FROM_BOT_RIGHT,
                     SequenceTraversal.SPIRAL_INWARD,
+                    SequenceTraversal.HILBERT_REVERSED,
+                    SequenceTraversal.RANDOM_FIXED_REVERSED,
                 ):
                     base_perm = base_perm.flip(0)
                 self._perm_cache[cache_key] = (

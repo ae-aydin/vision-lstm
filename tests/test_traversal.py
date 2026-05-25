@@ -14,6 +14,8 @@ from vision_lstm.vision_lstm_traversal import (
     SequenceTraversal,
     _get_zigzag_perm,
     _get_spiral_outward_perm,
+    _get_hilbert_perm,
+    _get_random_perm,
 )
 
 
@@ -34,14 +36,27 @@ print("--- Permutation checks ---")
 for H, W in [(8, 8), (4, 4), (7, 5)]:
     check_perm(_get_zigzag_perm(H, W),        H, W, "zigzag")
     check_perm(_get_spiral_outward_perm(H, W), H, W, "spiral")
+    check_perm(_get_random_perm(H, W),         H, W, "random")
+
+for H, W in [(8, 8), (4, 4)]:
+    check_perm(_get_hilbert_perm(H, W), H, W, "hilbert")
 
 assert _get_zigzag_perm(8, 8)[0].item() == 0, "zigzag should start at top-left (index 0)"
 center_candidates = {27, 28, 35, 36}
 assert _get_spiral_outward_perm(8, 8)[0].item() in center_candidates, (
     f"spiral should start near center, got {_get_spiral_outward_perm(8, 8)[0].item()}"
 )
+# hilbert on 8x8: first patch must be one of the four corners
+corner_candidates = {0, 7, 56, 63}
+assert _get_hilbert_perm(8, 8)[0].item() in corner_candidates, (
+    f"hilbert should start at a corner, got {_get_hilbert_perm(8, 8)[0].item()}"
+)
+# random perm with same seed must be reproducible
+assert (_get_random_perm(8, 8) == _get_random_perm(8, 8)).all(), "random perm not reproducible"
 print("  zigzag starts at top-left: OK")
 print("  spiral starts near center: OK")
+print("  hilbert starts at a corner: OK")
+print("  random perm is reproducible: OK")
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +67,8 @@ print("\n--- Inverse permutation checks ---")
 for name, perm in [
     ("zigzag",  _get_zigzag_perm(8, 8)),
     ("spiral",  _get_spiral_outward_perm(8, 8)),
+    ("hilbert", _get_hilbert_perm(8, 8)),
+    ("random",  _get_random_perm(8, 8)),
 ]:
     inv = torch.argsort(perm)
     x = torch.arange(64)
@@ -70,9 +87,11 @@ cfg = dict(dim=192, input_shape=(3, 64, 64), patch_size=8, depth=12,
            output_shape=(200,), conv_kind="causal1d")
 
 for name, traversal in [
-    ("rowwise", SequenceTraversal.ROWWISE_FROM_TOP_LEFT),
-    ("zigzag",  SequenceTraversal.ZIGZAG_FROM_TOP_LEFT),
-    ("spiral",  SequenceTraversal.SPIRAL_OUTWARD),
+    ("rowwise",  SequenceTraversal.ROWWISE_FROM_TOP_LEFT),
+    ("zigzag",   SequenceTraversal.ZIGZAG_FROM_TOP_LEFT),
+    ("spiral",   SequenceTraversal.SPIRAL_OUTWARD),
+    ("hilbert",  SequenceTraversal.HILBERT),
+    ("random",   SequenceTraversal.RANDOM_FIXED),
 ]:
     model = VisionLSTM2(traversal=traversal, **cfg)
     out = model(x)
