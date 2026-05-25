@@ -175,7 +175,7 @@ def evaluate(model, loader, criterion, device, epoch, total_epochs, amp_ctx):
     return total_loss / total, correct_top1 / total, correct_top5 / total
 
 
-def save_plots(log: list, exp_dir: Path):
+def save_plots(log: list, exp_dir: Path, args):
     epochs = [r["epoch"] for r in log]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
@@ -189,7 +189,11 @@ def save_plots(log: list, exp_dir: Path):
     ax2.plot(epochs, [r["val_top5"]  for r in log], label="val top-5")
     ax2.set_xlabel("Epoch"); ax2.set_ylabel("Accuracy"); ax2.set_title("Accuracy"); ax2.legend()
 
-    fig.suptitle(exp_dir.name)
+    title = (
+        f"Traversal: {args.traversal}  |  Tiny ImageNet  |  "
+        f"epochs={args.epochs}  batch={args.batch_size}  lr={args.lr:.0e}  seed={args.seed}"
+    )
+    fig.suptitle(title)
     fig.tight_layout()
     fig.savefig(exp_dir / "plots" / "curves.png", dpi=150)
     plt.close(fig)
@@ -278,7 +282,7 @@ def main():
             torch.save(model.state_dict(), exp_dir / "model_best.pth")
 
     torch.save(model.state_dict(), exp_dir / "model_final.pth")
-    save_plots(log, exp_dir)
+    save_plots(log, exp_dir, args)
 
     eval_results = {
         "best_val_top1": round(best_top1, 4),
