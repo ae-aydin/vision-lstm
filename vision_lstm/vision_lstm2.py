@@ -317,11 +317,12 @@ class MatrixLSTMCell(nn.Module):
         fgate_preact = fgate_preact.transpose(-1, -2).unsqueeze(-1)  # (B, NH, S, 1)#
 
         # cache causal mask to avoid memory allocation in every iteration
-        if S in self.causal_mask_cache:
-            causal_mask = self.causal_mask_cache[(S, str(q.device))]
+        _mask_key = (S, str(q.device))
+        if _mask_key in self.causal_mask_cache:
+            causal_mask = self.causal_mask_cache[_mask_key]
         else:
             causal_mask = torch.tril(torch.ones(S, S, dtype=torch.bool, device=q.device))
-            self.causal_mask_cache[(S, str(q.device))] = causal_mask
+            self.causal_mask_cache[_mask_key] = causal_mask
 
         h_state = parallel_stabilized_simple(
             queries=q,
