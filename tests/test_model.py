@@ -15,16 +15,18 @@ from vision_lstm.vision_lstm2 import VisionLSTM2
 print("--- Output shape checks ---")
 
 x_224 = torch.randn(2, 3, 224, 224)
-cfg_224 = dict(dim=192, depth=12, patch_size=16, input_shape=(3, 224, 224))
 
-model = VisionLSTM2(**cfg_224, output_shape=(1000,)).eval()
+model = VisionLSTM2(dim=192, depth=12, patch_size=16,
+                    input_shape=(3, 224, 224), output_shape=(1000,)).eval()
 with torch.no_grad():
     out = model(x_224)
 assert out.shape == (2, 1000), f"Expected (2, 1000), got {tuple(out.shape)}"
 assert out.isfinite().all(), "Classifier output contains NaN or Inf"
 print(f"  classifier 224x224 : {tuple(out.shape)}  OK")
 
-model = VisionLSTM2(**cfg_224, output_shape=None, mode="features", pooling="to_image").eval()
+model = VisionLSTM2(dim=192, depth=12, patch_size=16,
+                    input_shape=(3, 224, 224), output_shape=None,
+                    mode="features", pooling="to_image").eval()
 with torch.no_grad():
     out = model(torch.randn(1, 3, 224, 224))
 assert out.shape[0] == 1, f"Batch dim mismatch: {tuple(out.shape)}"

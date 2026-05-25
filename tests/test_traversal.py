@@ -83,8 +83,6 @@ for name, perm in [
 
 print("\n--- Forward pass (conv_kind='causal1d') ---")
 x = torch.randn(2, 3, 64, 64)
-cfg = dict(dim=192, input_shape=(3, 64, 64), patch_size=8, depth=12,
-           output_shape=(200,), conv_kind="causal1d")
 
 for name, traversal in [
     ("rowwise",  SequenceTraversal.ROWWISE_FROM_TOP_LEFT),
@@ -93,7 +91,8 @@ for name, traversal in [
     ("hilbert",  SequenceTraversal.HILBERT),
     ("random",   SequenceTraversal.RANDOM_FIXED),
 ]:
-    model = VisionLSTM2(traversal=traversal, **cfg)
+    model = VisionLSTM2(dim=192, input_shape=(3, 64, 64), patch_size=8, depth=12,
+                        output_shape=(200,), conv_kind="causal1d", traversal=traversal)
     out = model(x)
     assert out.shape == (2, 200), f"{name}: expected (2, 200), got {tuple(out.shape)}"
     assert out.isfinite().all(), f"{name}: output contains NaN or Inf"
