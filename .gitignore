@@ -149,6 +149,7 @@ dmypy.json
 *.md
 !README.md
 temp/
+outputs/
 docs/
 data/
 experiments/
