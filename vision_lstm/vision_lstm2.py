@@ -702,6 +702,7 @@ class VisionLSTM2(nn.Module):
         proj_bias=True,
         norm_bias=True,
         init_weights="original",
+        use_pos_embed=True,
     ):
         if depth == 24 and dim < 1024:
             warnings.warn(
@@ -719,6 +720,7 @@ class VisionLSTM2(nn.Module):
         self.stride = stride
         self.mode = mode
         self.pooling = pooling
+        self.use_pos_embed = use_pos_embed
         self.drop_path_rate = drop_path_rate
         self.drop_path_decay = drop_path_decay
         self.traversal = traversal
@@ -834,7 +836,8 @@ class VisionLSTM2(nn.Module):
         # embed patches
         x = self.patch_embed(x)
         # add pos_embed
-        x = self.pos_embed(x)
+        if self.use_pos_embed:
+            x = self.pos_embed(x)
 
         # flatten to 1d
         x = einops.rearrange(x, "b ... d -> b (...) d")

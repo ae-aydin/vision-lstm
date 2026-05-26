@@ -84,6 +84,7 @@ def _get_hilbert_perm(H: int, W: int) -> torch.Tensor:
     return torch.tensor(order, dtype=torch.long)
 
 
+@torch.compiler.disable
 def _get_random_perm(H: int, W: int, seed: int = 42) -> torch.Tensor:
     """Fixed random permutation — reproducible across runs via seed."""
     rng = torch.Generator()

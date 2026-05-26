@@ -73,6 +73,12 @@ def parse_args():
         action="store_true",
         help="torch.compile the model. First epoch is slow (~5-10 min of tracing).",
     )
+    p.add_argument(
+        "--use-pos-embed",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="2D positional embedding (default: on). Disable with --no-use-pos-embed.",
+    )
     return p.parse_args()
 
 
@@ -130,6 +136,7 @@ def build_model(args) -> VisionLSTM2:
         traversal=TRAVERSAL_MAP[args.traversal],
         conv_kind="causal1d",
         drop_path_rate=args.drop_path,
+        use_pos_embed=args.use_pos_embed,
     )
 
 
