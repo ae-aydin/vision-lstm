@@ -1,41 +1,18 @@
-# Vision-LSTM
+# Vision-LSTM-Traversals
 
-[[`Webpage`](https://nx-ai.github.io/vision-lstm)]
-[[`Paper`](https://arxiv.org/abs/2406.04303)]
-
-*PyTorch implementation of Vision-LSTM (ViL), an adaptation of xLSTM to computer vision.*
+*A study on patch traversal strategies in Vision-LSTM, trained from scratch on Tiny ImageNet.*
 
 ---
 
-## About this Fork
+## About
 
-This fork extends Vision-LSTM to study the effect of patch traversal order on model performance. Five traversal strategies are compared by training ViL-T from scratch on Tiny ImageNet:
-
-- **Row-wise** (baseline)
-- **Diagonal Zig-Zag**
-- **Spiral (Outward)**
-- **Hilbert Curve**
-- **Random Fixed** (seed 42)
+Extends [Vision-LSTM](https://github.com/NX-AI/vision-lstm) by Alkin et al. (ICLR 2025) to study the effect of patch traversal order on model performance. Five traversal strategies are compared by training ViL-T from scratch on Tiny ImageNet.
 
 ---
 
 ## License
 
-This project is licensed under the MIT License, except the following folders/files which are licensed under the Apache-2.0 license:
+This project is licensed under the MIT License, except the following files which are licensed under the Apache-2.0 license:
 
-- `src/vislstm/modules/xlstm`
 - `vision_lstm/vision_lstm.py`
 - `vision_lstm/vision_lstm2.py`
-
-## Citation
-
-Original Vision-LSTM paper:
-
-```bibtex
-@article{alkin2024visionlstm,
-  title={{Vision-LSTM}: {xLSTM} as Generic Vision Backbone},
-  author={Benedikt Alkin and Maximilian Beck and Korbinian P{\"o}ppel and Sepp Hochreiter and Johannes Brandstetter},
-  journal={arXiv preprint arXiv:2406.04303},
-  year={2024}
-}
-```

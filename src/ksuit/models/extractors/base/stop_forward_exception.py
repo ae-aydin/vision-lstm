@@ -1,2 +1,0 @@
-class StopForwardException(Exception):
-    pass
