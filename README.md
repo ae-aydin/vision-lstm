@@ -1,14 +1,13 @@
-# Vision-LSTM-Traversals
+# Vision-LSTM Traversals
 
-*A study on patch traversal strategies in Vision-LSTM, trained from scratch on Tiny ImageNet.*
+Extension of [Vision-LSTM](https://github.com/NX-AI/vision-lstm) comparing patch traversal orders. Vision-LSTM is a recurrent vision model that replaces transformer self-attention with linear-memory LSTM processing. Image patches are processed in sequence; the order depends on the chosen traversal strategy.
 
-## About
+Implemented 5 structured patch traversals for ViL-T and trained from scratch on Tiny ImageNet.
 
-Extends [Vision-LSTM](https://github.com/NX-AI/vision-lstm) by Alkin et al. (ICLR 2025) to study the effect of patch traversal order on model performance. Five traversal strategies are compared by training ViL-T from scratch on Tiny ImageNet.
+## Results
+
+No clear accuracy winner across structured traversals for classification. Traversal strategy affects training dynamics but does not improve generalization. Positional embedding benefit increases with traversal complexity.
 
 ## License
 
-This project is licensed under the MIT License, except the following files which are licensed under the Apache-2.0 license:
-
-- `vision_lstm/vision_lstm.py`
-- `vision_lstm/vision_lstm2.py`
+MIT License, except `vision_lstm/vision_lstm.py` and `vision_lstm/vision_lstm2.py` which are Apache-2.0.
